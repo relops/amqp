@@ -18,6 +18,7 @@ import (
 	"net"
 	"os"
 	"reflect"
+	"sync"
 	"testing"
 	"testing/quick"
 	"time"
@@ -612,6 +613,68 @@ func TestIntegrationRecoverNotImplemented(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestIntegrationQosConsumers(t *testing.T) {
+	queue := "test.integration.publish.consume.qos"
+	n := 100
+
+	c1 := integrationConnection(t, "pub-qos")
+	r1 := integrationConnection(t, "recv-qos-1")
+	r2 := integrationConnection(t, "recv-qos-2")
+
+	defer c1.Close()
+	defer r1.Close()
+	defer r2.Close()
+
+	pub, _ := c1.Channel()
+
+	sub1, _ := r1.Channel()
+	sub2, _ := r2.Channel()
+
+	pub.QueueDeclare(queue, false, true, false, false, nil)
+	defer pub.QueueDelete(queue, false, false, false)
+
+	sub1.Qos(1, 0, false)
+	sub2.Qos(1, 0, false)
+
+	m1, _ := sub1.Consume(queue, "", false, false, false, false, nil)
+	m2, _ := sub2.Consume(queue, "", false, false, false, false, nil)
+
+	var wg sync.WaitGroup
+
+	for i := 0; i < n; i++ {
+		msg := fmt.Sprintf("msg %d", i)
+		pub.Publish("", queue, false, false, Publishing{Body: []byte(msg)})
+		wg.Add(1)
+	}
+
+	var d1, d2 int
+
+	go func() {
+		for msg := range m1 {
+			msg.Ack(false)
+			wg.Done()
+			d1++
+			time.Sleep(10 * time.Millisecond)
+		}
+	}()
+
+	go func() {
+		for msg := range m2 {
+			msg.Ack(false)
+			wg.Done()
+			d2++
+			time.Sleep(100 * time.Millisecond)
+		}
+	}()
+
+	wg.Wait()
+
+	if float32(d2)/float32(n) > 0.15 {
+		t.Logf("Second consumer should only receive ca. 10pc of the messages, but received %d of %d", d2, n)
+	}
+
 }
 
 // This test is driven by a private API to simulate the server sending a channelFlow message
