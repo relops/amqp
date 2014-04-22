@@ -635,11 +635,11 @@ func TestIntegrationQosConsumers(t *testing.T) {
 	pub.QueueDeclare(queue, false, true, false, false, nil)
 	defer pub.QueueDelete(queue, false, false, false)
 
-	sub1.Qos(1, 0, false)
-	sub2.Qos(1, 0, false)
-
 	m1, _ := sub1.Consume(queue, "", false, false, false, false, nil)
 	m2, _ := sub2.Consume(queue, "", false, false, false, false, nil)
+
+	sub1.Qos(1, 0, false)
+	sub2.Qos(1, 0, false)
 
 	var wg sync.WaitGroup
 
@@ -671,7 +671,7 @@ func TestIntegrationQosConsumers(t *testing.T) {
 
 	wg.Wait()
 
-	if float32(d2)/float32(n) > 0.15 {
+	if float32(d2)/float32(n) > 0.2 {
 		t.Logf("Second consumer should only receive ca. 10pc of the messages, but received %d of %d", d2, n)
 	}
 
